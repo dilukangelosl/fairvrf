@@ -30,8 +30,11 @@ class FairVRFService {
             enabled: true,
             thresholdPercentage: 80,
             minRemainingSeeds: 50,
-            autoGenerateNewChain: true
+            autoGenerateNewChain: true,
+            autoUpdateContract: true // Enable automatic contract updates
         });
+        // Set up automatic anchor update callback
+        this.chainManager.setAnchorUpdateCallback(this.updateContractAnchor.bind(this));
         this.startTime = new Date();
         this.metrics = {
             totalRequests: 0,
@@ -162,6 +165,39 @@ class FairVRFService {
     async rotateChain(chainLength) {
         console.log('Manual chain rotation triggered...');
         return this.chainManager.rotateChain(chainLength);
+    }
+    /**
+     * Update the contract anchor automatically when chain rotation occurs
+     */
+    async updateContractAnchor(newAnchor) {
+        console.log(`🔄 Updating contract anchor to: ${newAnchor}`);
+        try {
+            // ABI for setAnchor function
+            const setAnchorAbi = [
+                parseAbiItem('function setAnchor(bytes32 _newAnchor) external')
+            ];
+            // Call setAnchor on the contract
+            const hash = await this.wallet.writeContract({
+                address: CONTRACT_ADDRESS,
+                abi: setAnchorAbi,
+                functionName: 'setAnchor',
+                args: [newAnchor]
+            });
+            console.log(`📝 Contract anchor update transaction: ${hash}`);
+            // Wait for confirmation
+            const receipt = await this.client.waitForTransactionReceipt({ hash });
+            if (receipt.status === 'success') {
+                console.log(`✅ Contract anchor successfully updated to: ${newAnchor}`);
+                console.log(`⛽ Gas used: ${receipt.gasUsed.toString()}`);
+            }
+            else {
+                throw new Error('Transaction failed');
+            }
+        }
+        catch (error) {
+            console.error(`❌ Failed to update contract anchor:`, error);
+            throw error; // Re-throw to trigger fallback handling in ChainManager
+        }
     }
 }
 async function main() {

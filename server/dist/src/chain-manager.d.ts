@@ -11,13 +11,18 @@ export interface RotationStrategy {
     thresholdPercentage: number;
     minRemainingSeeds: number;
     autoGenerateNewChain: boolean;
+    autoUpdateContract: boolean;
+}
+export interface AnchorUpdateCallback {
+    (newAnchor: string): Promise<void>;
 }
 export declare class ChainManager {
     private chain;
     private chainPath;
     private currentIndex;
     private rotationStrategy;
-    constructor(rotationStrategy?: Partial<RotationStrategy>);
+    private anchorUpdateCallback?;
+    constructor(rotationStrategy?: Partial<RotationStrategy>, customChainPath?: string);
     private loadChain;
     /**
      * Finds the next seed to reveal based on the current anchor.
@@ -39,7 +44,15 @@ export declare class ChainManager {
     /**
      * Manual rotation trigger
      */
-    rotateChain(chainLength?: number): string;
+    rotateChain(chainLength?: number): Promise<string>;
+    /**
+     * Set the callback function for automatic anchor updates
+     */
+    setAnchorUpdateCallback(callback: AnchorUpdateCallback): void;
+    /**
+     * Enable or disable automatic contract updates
+     */
+    setAutoUpdateContract(enabled: boolean): void;
     /**
      * Verify a seed against expected hash
      */

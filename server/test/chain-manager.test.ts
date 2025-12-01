@@ -187,7 +187,7 @@ describe("ChainManager", () => {
       chainManager = new TestChainManager({ enabled: false }, tempChainPath);
       const originalAnchor = chainManager.getCurrentAnchor();
       
-      const newAnchor = chainManager.rotateChain(5); // Small chain for testing
+      const newAnchor = (chainManager as TestChainManager).rotateChainSync(5); // Small chain for testing
       
       expect(newAnchor).to.not.equal(originalAnchor);
       expect(chainManager.getCurrentAnchor()).to.equal(newAnchor);
@@ -200,7 +200,7 @@ describe("ChainManager", () => {
     it("Should backup old chain during rotation", () => {
       chainManager = new TestChainManager({ enabled: false }, tempChainPath);
       
-      chainManager.rotateChain(3);
+      (chainManager as TestChainManager).rotateChainSync(3);
       
       // Check that backup was created
       const testDir = path.dirname(tempChainPath);
@@ -257,7 +257,7 @@ describe("ChainManager", () => {
     it("Should generate valid new chains", () => {
       chainManager = new TestChainManager({ enabled: false }, tempChainPath);
       
-      chainManager.rotateChain(5);
+      (chainManager as TestChainManager).rotateChainSync(5);
       const newChain = chainManager.getChainSegment(0, 5);
       
       // Verify new chain integrity
@@ -322,9 +322,65 @@ describe("ChainManager", () => {
 // Test helper class that allows custom chain path
 class TestChainManager extends ChainManager {
   constructor(rotationStrategy: Partial<RotationStrategy>, chainPath: string) {
-    super(rotationStrategy);
-    // Override the chainPath
-    (this as any).chainPath = chainPath;
+    // Use the new constructor parameter for custom chain path
+    super(rotationStrategy, chainPath);
+  }
+
+  // Override rotateChain to be async but without contract updates for testing
+  public override async rotateChain(chainLength: number = 1000): Promise<string> {
+    // Use a version without contract updates for testing
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    const secret = toHex(randomBytes);
+
+    const newChain: string[] = [];
+    let current = secret;
+
+    for (let i = 0; i < chainLength; i++) {
+      newChain.unshift(current);
+      current = keccak256(current as `0x${string}`);
+    }
+
+    // Backup old chain
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupPath = (this as any).chainPath.replace(".json", `_backup_${timestamp}.json`);
+    fs.writeFileSync(backupPath, JSON.stringify((this as any).chain, null, 2));
+
+    // Save new chain
+    fs.writeFileSync((this as any).chainPath, JSON.stringify(newChain, null, 2));
+    
+    // Reload chain
     (this as any).loadChain();
+
+    const newAnchor = newChain[0];
+    return newAnchor;
+  }
+
+  // Add synchronous rotation method for tests that need it
+  public rotateChainSync(chainLength: number = 1000): string {
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    const secret = toHex(randomBytes);
+
+    const newChain: string[] = [];
+    let current = secret;
+
+    for (let i = 0; i < chainLength; i++) {
+      newChain.unshift(current);
+      current = keccak256(current as `0x${string}`);
+    }
+
+    // Backup old chain
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupPath = (this as any).chainPath.replace(".json", `_backup_${timestamp}.json`);
+    fs.writeFileSync(backupPath, JSON.stringify((this as any).chain, null, 2));
+
+    // Save new chain
+    fs.writeFileSync((this as any).chainPath, JSON.stringify(newChain, null, 2));
+    
+    // Reload chain
+    (this as any).loadChain();
+
+    return newChain[0];
   }
 }

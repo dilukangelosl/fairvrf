@@ -12,6 +12,8 @@ A gas-efficient, self-hosted Verifiable Random Function (VRF) that serves as a d
 - [Usage Examples](#usage-examples)
 - [API Reference](#api-reference)
 - [Deployment Guide](#deployment-guide)
+- [Automatic Contract Updates](#automatic-contract-updates)
+- [Consumer Management](#consumer-management)
 - [Chain Management](#chain-management)
 - [Security Considerations](#security-considerations)
 - [Migration Guide](#migration-guide)
@@ -90,6 +92,7 @@ This ensures:
 - **Provably Fair**: Users can verify randomness generation
 - **Gas Optimized**: ~30-50k gas per fulfillment
 - **Self-Sovereign**: No external dependencies
+- **Automatic Chain Management**: Built-in chain rotation with contract synchronization
 
 ### Supported Interfaces
 
@@ -113,13 +116,19 @@ cd fairvrf
 npm install
 ```
 
-### 2. Generate Hash Chain
+### 2. Generate Hash Chain with Auto-Update
 
 ```bash
-npx hardhat run scripts/generate-chain.ts
+# Configure for automatic contract updates
+export CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
+export PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869
+export CHAIN_ID=33139  # Optional: Auto-detected for common networks
+
+# Generate chain and update contract automatically
+npx tsx scripts/generate-chain.ts
 ```
 
-This creates `server/chain.db.json` with 1000 pre-computed seeds.
+This creates `server/chain.db.json` with 1000 pre-computed seeds and automatically updates the contract anchor if configured.
 
 ### 3. Deploy Contract
 
@@ -175,6 +184,9 @@ Create `.env` file:
 CONTRACT_ADDRESS=0x...
 PRIVATE_KEY=0x...
 RPC_URL=http://127.0.0.1:8545
+
+# Optional: For automatic contract updates
+CHAIN_ID=33139  # Auto-detected if not specified
 
 # Optional: Production networks
 SEPOLIA_RPC_URL=https://...
@@ -281,6 +293,16 @@ function fulfillRandomness(
 ) external;
 ```
 
+#### Anchor Management Functions
+
+```solidity
+// Update the contract anchor (owner only)
+function setAnchor(bytes32 _newAnchor) external onlyOwner;
+
+// Get current anchor
+function currentAnchor() external view returns (bytes32);
+```
+
 #### Consumer Whitelist Management
 
 ```solidity
@@ -345,26 +367,47 @@ abstract contract PythVRFConsumer {
 # Start Hardhat node
 npx hardhat node
 
-# Generate chain
-npx hardhat run scripts/generate-chain.ts --network localhost
+# Generate chain with auto-update
+export CONTRACT_ADDRESS=<deployed_address>
+export PRIVATE_KEY=<owner_private_key>
+npx tsx scripts/generate-chain.ts
 
 # Deploy contracts
 npx hardhat ignition deploy ignition/modules/FairVRF.ts --network localhost
 
 # Start server
-export CONTRACT_ADDRESS=<address>
 cd server && npm run start
 ```
 
 ### Production Deployment
 
-#### 1. Generate Production Chain
+#### 1. Generate Production Chain with Auto-Update
 
 ```bash
+# Configure environment for production
+export CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
+export PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869  
+export CHAIN_ID=33139  # ApeChain
+export RPC_URL=https://rpc.apechain.com
+
 # Modify scripts/generate-chain.ts for production scale
 const CHAIN_LENGTH = 100000; // 100k requests
 
-npx hardhat run scripts/generate-chain.ts
+# Generate and auto-update contract
+npx tsx scripts/generate-chain.ts
+```
+
+**Expected Output:**
+```
+Generating hash chain of length 100000...
+Chain saved to /path/to/server/chain.db.json
+Attempting to update contract anchor...
+Contract Address: 0x14ba174823e16DD8747a2A16F62333ad43C23CEB
+New Anchor: 0xaf035cf003e12923901e9d8713231a7dfb9f901363a68328abe86811dc60d046
+Contract anchor updated successfully!
+Transaction: 0xf418baa6eec13ad9129359b36bb2ce899b369f26af9a68c7c8d3879baec4b2ca
+Block Number: 29480738
+Gas Used: 30632
 ```
 
 #### 2. Deploy to Network
@@ -375,14 +418,25 @@ npx hardhat ignition deploy ignition/modules/FairVRF.ts --network sepolia
 
 #### 3. Docker Deployment
 
+##### Environment Variables
+
+| Variable | Description | Required | Default | Example |
+|----------|-------------|----------|---------|---------|
+| `CONTRACT_ADDRESS` | Deployed FairVRF contract address | ✅ | - | `0x14ba...` |
+| `PRIVATE_KEY` | Private key for fulfillment account | ✅ | - | `0x923e...` |
+| `RPC_URL` | Blockchain RPC endpoint | ❌ | `http://127.0.0.1:8545` | `https://rpc.apechain.com` |
+| `CHAIN_ID` | Network chain ID (auto-detected) | ❌ | Auto-detected | `33139` |
+| `NODE_ENV` | Runtime environment | ❌ | `development` | `production` |
+
 ##### Option A: Docker Compose (Recommended)
 
 ```bash
 # Create environment file
 cat > .env << EOF
-CONTRACT_ADDRESS=0x...
-PRIVATE_KEY=0x...
-RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR-KEY
+CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
+PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869
+RPC_URL=https://rpc.apechain.com
+CHAIN_ID=33139
 EOF
 
 # Build and start the service
@@ -395,35 +449,113 @@ docker-compose logs -f fairvrf-server
 docker-compose down
 ```
 
-##### Option B: Manual Docker Build
+## Automatic Contract Updates
 
-```bash
-# Build the Docker image
-cd server
-docker build -t fairvrf/server:latest .
+FairVRF includes built-in automatic contract anchor update functionality that eliminates manual intervention during chain generation and rotation.
 
-# Run the container
-docker run -d \
-  --name fairvrf-oracle \
-  --restart unless-stopped \
-  -e CONTRACT_ADDRESS=${CONTRACT_ADDRESS} \
-  -e PRIVATE_KEY=${PRIVATE_KEY} \
-  -e RPC_URL=${RPC_URL} \
-  -v $(pwd)/chain.db.json:/app/chain.db.json:ro \
-  fairvrf/server:latest
+### Features
 
-# Check logs
-docker logs -f fairvrf-oracle
+- **Zero-Downtime Rotation**: Server continues operating during chain transitions
+- **Automatic Synchronization**: Contract anchor stays in sync with server chain
+- **Multi-Network Support**: Works across different blockchain networks
+- **Intelligent Chain Detection**: Automatically detects network based on RPC URL
+- **Robust Error Handling**: Graceful degradation when automation fails
+
+### Configuration
+
+#### Environment Variables
+
+```env
+# Required for automatic updates
+CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
+PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869
+
+# Optional: Network configuration
+RPC_URL=https://rpc.apechain.com
+CHAIN_ID=33139  # Auto-detected if not specified
 ```
 
-##### Environment Variables
+#### Supported Networks
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `CONTRACT_ADDRESS` | Deployed FairVRF contract address | ✅ | - |
-| `PRIVATE_KEY` | Private key for fulfillment account | ✅ | - |
-| `RPC_URL` | Blockchain RPC endpoint | ❌ | `http://127.0.0.1:8545` |
-| `NODE_ENV` | Runtime environment | ❌ | `development` |
+| Network | Chain ID | Auto-Detection | RPC Pattern |
+|---------|----------|----------------|-------------|
+| Hardhat Local | 31337 | ✅ | `localhost`, `127.0.0.1` |
+| ApeChain | 33139 | ✅ | `apechain` |
+| Custom | Any | Manual | Set `CHAIN_ID` env var |
+
+### Usage Examples
+
+#### Manual Chain Generation with Auto-Update
+
+```bash
+# Generate new chain and update contract automatically
+CHAIN_ID=33139 npx tsx scripts/generate-chain.ts
+```
+
+#### Server-Side Automatic Rotation
+
+The server includes intelligent chain management:
+
+```javascript
+// Automatic rotation configuration
+const rotationConfig = {
+  enabled: true,
+  thresholdPercentage: 80,     // Trigger at 80% utilization
+  minRemainingSeeds: 100,      // Or when <100 seeds remain
+  autoGenerateNewChain: true,  // Generate new chains automatically
+  chainLength: 10000           // New chain size
+};
+```
+
+**Server Output Example:**
+```
+Loaded chain with 1000 seeds.
+Rotation strategy: ENABLED
+  - Threshold: 80% utilization
+  - Min remaining: 100 seeds
+  - Auto-generate: YES
+
+ROTATION NEEDED! Chain utilization: 80.0%
+   Remaining seeds: 200/1000
+Auto-generating new hash chain...
+Generating new hash chain with 10000 seeds...
+Backed up old chain to: chain_backup_2025-12-01T09-43-09-115Z.json
+Saved new chain to: chain.db.json
+New anchor (s0): 0xdd3392333c82e5e65673495b90d7793caa699a145df6e2f90e404ae69f873f0a
+Auto-updating contract anchor...
+Contract anchor updated successfully!
+```
+
+### Error Handling
+
+When automatic updates fail, the system provides clear troubleshooting guidance:
+
+```
+Failed to update contract anchor: invalid chain id for signer: have 31337 want 33139
+
+Troubleshooting:
+   1. Ensure CONTRACT_ADDRESS is correct
+   2. Ensure PRIVATE_KEY has sufficient balance  
+   3. Ensure the contract has a setAnchor(bytes32) function
+   4. Ensure RPC_URL is accessible
+   5. Ensure CHAIN_ID matches the network (set CHAIN_ID=33139 for ApeChain)
+
+Manual Update Required:
+   Call setAnchor("0xnew_anchor_hash") on contract 0x14ba174823e16DD8747a2A16F62333ad43C23CEB
+```
+
+### Integration with ChainManager
+
+```typescript
+// Enable automatic contract updates in ChainManager
+const chainManager = new ChainManager(rotationStrategy, chainPath, {
+  onAnchorUpdate: createAnchorUpdateCallback({
+    contractAddress: process.env.CONTRACT_ADDRESS,
+    privateKey: process.env.PRIVATE_KEY,
+    chainId: process.env.CHAIN_ID ? parseInt(process.env.CHAIN_ID) : undefined
+  })
+});
+```
 
 ## Consumer Management
 

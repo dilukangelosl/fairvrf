@@ -342,7 +342,7 @@ describe("FairVRFService", () => {
           blockNumber: BigInt(100 + i)
         };
         
-        promises.push(service.simulateHandleRequest(mockLog, testChain[i], 1)); // 1ms delay
+        promises.push(service.simulateHandleRequest(mockLog, testChain[i], 5)); // 5ms delay to ensure measurable time
       }
       
       const results = await Promise.all(promises);

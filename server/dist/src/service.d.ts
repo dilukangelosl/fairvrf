@@ -29,6 +29,10 @@ declare class FairVRFService {
     };
     getChainStats(): import("./chain-manager.js").ChainStats;
     rotateChain(chainLength?: number): Promise<string>;
+    /**
+     * Update the contract anchor automatically when chain rotation occurs
+     */
+    private updateContractAnchor;
 }
 export { FairVRFService };
 //# sourceMappingURL=service.d.ts.map

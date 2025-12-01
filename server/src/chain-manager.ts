@@ -20,6 +20,11 @@ export interface RotationStrategy {
   thresholdPercentage: number; // Rotate when X% of chain is used
   minRemainingSeeds: number; // Or when fewer than X seeds remain
   autoGenerateNewChain: boolean;
+  autoUpdateContract: boolean; // New option to auto-update contract anchor
+}
+
+export interface AnchorUpdateCallback {
+  (newAnchor: string): Promise<void>;
 }
 
 export class ChainManager {
@@ -27,14 +32,16 @@ export class ChainManager {
   private chainPath: string;
   private currentIndex: number = -1;
   private rotationStrategy: RotationStrategy;
+  private anchorUpdateCallback?: AnchorUpdateCallback;
 
-  constructor(rotationStrategy?: Partial<RotationStrategy>) {
-    this.chainPath = path.join(__dirname, "../../server/chain.db.json");
+  constructor(rotationStrategy?: Partial<RotationStrategy>, customChainPath?: string) {
+    this.chainPath = customChainPath || path.join(__dirname, "../../chain.db.json");
     this.rotationStrategy = {
       enabled: true,
       thresholdPercentage: 80, // Rotate when 80% used
       minRemainingSeeds: 50, // Or when <50 seeds remain
       autoGenerateNewChain: true,
+      autoUpdateContract: false, // Default to false for safety
       ...rotationStrategy,
     };
 
@@ -143,7 +150,10 @@ export class ChainManager {
 
     if (this.rotationStrategy.autoGenerateNewChain) {
       console.log(`Auto-generating new hash chain...`);
-      this.generateNewChain();
+      // Execute async chain generation without blocking
+      this.generateNewChain().catch(error => {
+        console.error('Failed to auto-generate new chain:', error.message);
+      });
     } else {
       console.warn(
         `Manual intervention required: Generate new chain and update contract anchor!`
@@ -154,7 +164,7 @@ export class ChainManager {
   /**
    * Generate a new hash chain and save it
    */
-  private generateNewChain(chainLength: number = 1000): string {
+  private async generateNewChain(chainLength: number = 1000): Promise<string> {
     console.log(`Generating new hash chain with ${chainLength} seeds...`);
 
     // Generate random secret seed
@@ -189,7 +199,20 @@ export class ChainManager {
 
     const newAnchor = newChain[0]; // s0 is the anchor
     console.log(`New anchor (s0): ${newAnchor}`);
-    console.warn(`IMPORTANT: Update contract anchor to: ${newAnchor}`);
+
+    // Auto-update contract if enabled and callback is set
+    if (this.rotationStrategy.autoUpdateContract && this.anchorUpdateCallback) {
+      try {
+        console.log(`Auto-updating contract anchor...`);
+        await this.anchorUpdateCallback(newAnchor);
+        console.log(`✅ Contract anchor updated successfully!`);
+      } catch (error: any) {
+        console.error(`❌ Failed to auto-update contract anchor:`, error.message);
+        console.warn(`MANUAL ACTION REQUIRED: Update contract anchor to: ${newAnchor}`);
+      }
+    } else {
+      console.warn(`IMPORTANT: Update contract anchor to: ${newAnchor}`);
+    }
 
     return newAnchor;
   }
@@ -197,8 +220,23 @@ export class ChainManager {
   /**
    * Manual rotation trigger
    */
-  public rotateChain(chainLength: number = 1000): string {
-    return this.generateNewChain(chainLength);
+  public async rotateChain(chainLength: number = 1000): Promise<string> {
+    return await this.generateNewChain(chainLength);
+  }
+
+  /**
+   * Set the callback function for automatic anchor updates
+   */
+  public setAnchorUpdateCallback(callback: AnchorUpdateCallback): void {
+    this.anchorUpdateCallback = callback;
+  }
+
+  /**
+   * Enable or disable automatic contract updates
+   */
+  public setAutoUpdateContract(enabled: boolean): void {
+    this.rotationStrategy.autoUpdateContract = enabled;
+    console.log(`Auto contract update: ${enabled ? "ENABLED" : "DISABLED"}`);
   }
 
   /**
