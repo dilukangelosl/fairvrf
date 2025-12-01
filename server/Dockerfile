@@ -11,11 +11,15 @@ COPY tsconfig.json ./
 # Install dependencies
 RUN npm ci --only=production
 
-# Copy source code
+# Copy source code and scripts
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Build the TypeScript code
 RUN npm run build
+
+# Make scripts executable
+RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/generate-chain-docker.js
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S fairvrf && \
@@ -32,10 +36,11 @@ EXPOSE 3000
 
 # Set environment variables
 ENV NODE_ENV=production
+ENV CHAIN_LENGTH=100000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD node -e "console.log('Health check passed')" || exit 1
+# Health check - wait longer for initial chain generation
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "const fs = require('fs'); if (!fs.existsSync('/app/chain.db.json')) process.exit(1); console.log('Health check passed')" || exit 1
 
-# Start the service
-CMD ["npm", "start"]
+# Use custom entrypoint that handles chain generation
+ENTRYPOINT ["./scripts/docker-entrypoint.sh"]

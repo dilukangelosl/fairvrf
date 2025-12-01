@@ -563,47 +563,29 @@ EXPOSE 3000
 CMD ["npm", "start"]
 ```
 
-**4. Generate Hash Chain Database:**
+**4. Automatic Chain Generation:**
 
-Before deploying to Coolify, you **MUST** generate the hash chain database:
+The Docker container automatically generates the hash chain database on startup - **no manual generation required!**
 
 ```bash
-# Method 1: Generate locally and commit to repo
-export CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
-export PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-export CHAIN_ID=33139
-
-# Generate production-scale chain (100k requests)
-cd scripts && node -e "
-const CHAIN_LENGTH = 100000;
-const crypto = require('crypto');
-const fs = require('fs');
-
-console.log('Generating production hash chain...');
-const chain = [];
-let current = crypto.randomBytes(32).toString('hex');
-
-for (let i = 0; i < CHAIN_LENGTH; i++) {
-  chain.unshift('0x' + current);
-  current = crypto.createHash('sha256').update(Buffer.from(current, 'hex')).digest('hex');
-}
-
-const chainData = { chain, metadata: { length: CHAIN_LENGTH, created: new Date().toISOString() } };
-fs.writeFileSync('../server/chain.db.json', JSON.stringify(chainData, null, 2));
-
-console.log(\`Generated chain with \${CHAIN_LENGTH} seeds\`);
-console.log(\`Anchor (s0): \${chain[0]}\`);
-console.log('File saved to server/chain.db.json');
-"
-
-# Method 2: Use the generate-chain.ts script  
-npx tsx scripts/generate-chain.ts
-
-# Commit the generated chain.db.json to your repository
-git add server/chain.db.json
-git commit -m "Add production hash chain database"
-git push
+# The container handles chain generation automatically based on environment variables:
+# CHAIN_LENGTH=100000  # Default: 100k seeds for production
+# CONTRACT_ADDRESS=0x... # Your deployed FairVRF contract
+# PRIVATE_KEY=0x...     # Private key for anchor updates
 ```
+
+**Container Startup Process:**
+1. **Check Existing Chain**: If `chain.db.json` exists, skip generation
+2. **Generate Chain**: Create new hash chain with specified length  
+3. **Save Database**: Store chain in `/app/chain.db.json` inside container
+4. **Start Server**: Launch FairVRF service with generated chain
+
+**Benefits:**
+- **Zero Manual Setup** - Everything happens automatically
+- **No Large Files in Repo** - Chain generated at runtime  
+- **Configurable Chain Size** - Set `CHAIN_LENGTH` env var
+- **Persistent Storage** - Chain persists across container restarts (if using volumes)
+- **Production Ready** - Optimized for 100k+ seed chains
 
 **5. Deploy via Coolify:**
 
