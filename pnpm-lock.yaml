@@ -22,6 +22,9 @@ devDependencies:
   '@nomicfoundation/hardhat-toolbox-viem':
     specifier: ^5.0.1
     version: 5.0.1(@nomicfoundation/hardhat-ignition-viem@3.0.5)(@nomicfoundation/hardhat-ignition@3.0.5)(@nomicfoundation/hardhat-keystore@3.0.3)(@nomicfoundation/hardhat-network-helpers@3.0.3)(@nomicfoundation/hardhat-node-test-runner@3.0.7)(@nomicfoundation/hardhat-verify@3.0.7)(@nomicfoundation/hardhat-viem-assertions@3.0.4)(@nomicfoundation/hardhat-viem@3.0.1)(@nomicfoundation/ignition-core@3.0.5)(hardhat@3.0.16)(viem@2.40.3)
+  '@nomicfoundation/hardhat-verify':
+    specifier: ^3.0.7
+    version: 3.0.7(hardhat@3.0.16)
   '@types/chai':
     specifier: ^5.2.3
     version: 5.2.3
