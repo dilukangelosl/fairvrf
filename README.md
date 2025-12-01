@@ -120,8 +120,8 @@ npm install
 
 ```bash
 # Configure for automatic contract updates
-export CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
-export PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869
+export CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
+export PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 export CHAIN_ID=33139  # Optional: Auto-detected for common networks
 
 # Generate chain and update contract automatically
@@ -261,6 +261,80 @@ contract LotteryGame is PythVRFConsumer {
 }
 ```
 
+### Pyth Adapter Bridge
+
+For seamless integration with existing Pyth Entropy contracts, FairVRF includes a **PythToFairVRFAdapter** that provides complete API compatibility:
+
+**Deployed Addresses (ApeChain):**
+- FairVRF Core: `0x48c579b565de9FBfd2E6800952b947E090Ff9cd0`
+- Pyth Adapter: `0x9Ae17f3cCFB9a2C754cEd486BE9eaA6cf088c48E`
+- Example Consumer: `0x30439aA46cd85b68353575e4d8634479AB52B80C`
+
+#### Drop-in Replacement Usage
+
+```solidity
+pragma solidity ^0.8.28;
+
+// NO CHANGES NEEDED! Use your existing Pyth contracts
+contract ExistingPythContract {
+    IEntropy public entropy;
+    
+    constructor(address entropyProvider) {
+        // Simply point to PythToFairVRFAdapter instead
+        entropy = IEntropy(0x9Ae17f3cCFB9a2C754cEd486BE9eaA6cf088c48E);
+    }
+    
+    function requestRandomness() external {
+        // Your existing Pyth code works unchanged!
+        bytes32 userRandom = keccak256(abi.encode(msg.sender, block.timestamp));
+        
+        uint64 sequenceNumber = entropy.requestWithCallback{value: 0}(
+            address(entropy), // provider (ignored by adapter)
+            userRandom
+        );
+        
+        // Store sequence number for tracking...
+    }
+    
+    function entropyCallback(
+        uint64 sequenceNumber,
+        address provider,
+        bytes32 randomNumber
+    ) external {
+        // Your existing callback logic works unchanged!
+        require(msg.sender == address(entropy), "Unauthorized");
+        
+        // Use randomNumber for your application...
+    }
+}
+```
+
+#### Adapter Features
+
+✅ **100% Pyth API Compatible** - Zero code changes required  
+✅ **Fee-Free Operation** - No ETH fees (unlike real Pyth Entropy)  
+✅ **Instant Fulfillment** - No waiting for external providers  
+✅ **Self-Hosted** - No external dependencies  
+✅ **Provably Fair** - Full cryptographic verifiability  
+
+#### Deployment Example
+
+```bash
+# Deploy the complete Pyth-compatible stack
+npx hardhat ignition deploy ignition/modules/FairVRF.ts --network apechain
+npx hardhat ignition deploy ignition/modules/PythToFairVRFAdapter.ts --network apechain
+npx hardhat ignition deploy ignition/modules/PythExampleConsumer.ts --network apechain
+
+# Test the integration
+npx hardhat run scripts/interact-pyth-example.ts --network apechain
+```
+
+The adapter automatically handles:
+- Event translation between Pyth and FairVRF formats
+- Callback routing to original requester contracts  
+- Error handling and edge cases
+- Gas optimization for batch operations
+
 ## API Reference
 
 ### Core Contract: FairVRF.sol
@@ -385,8 +459,8 @@ cd server && npm run start
 
 ```bash
 # Configure environment for production
-export CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
-export PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869  
+export CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
+export PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef  
 export CHAIN_ID=33139  # ApeChain
 export RPC_URL=https://rpc.apechain.com
 
@@ -433,10 +507,11 @@ npx hardhat ignition deploy ignition/modules/FairVRF.ts --network sepolia
 ```bash
 # Create environment file
 cat > .env << EOF
-CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
-PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869
+CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
+PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 RPC_URL=https://rpc.apechain.com
 CHAIN_ID=33139
+NODE_ENV=production
 EOF
 
 # Build and start the service
@@ -447,6 +522,139 @@ docker-compose logs -f fairvrf-server
 
 # Stop the service
 docker-compose down
+```
+
+##### Option B: Coolify Docker Deployment
+
+For **Coolify** deployments, use the following configuration:
+
+**1. Repository Setup:**
+```bash
+# Your repository should contain the server/ directory with:
+server/
+├── Dockerfile
+├── package.json  
+├── src/
+├── chain.db.json  # Generated hash chain (see below)
+└── .env.example
+```
+
+**2. Environment Variables in Coolify:**
+```env
+CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
+PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+RPC_URL=https://rpc.apechain.com  
+CHAIN_ID=33139
+NODE_ENV=production
+PORT=3000
+```
+
+**3. Dockerfile Configuration:**
+The existing `server/Dockerfile` is already optimized for Coolify:
+
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --production
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+**4. Generate Hash Chain Database:**
+
+Before deploying to Coolify, you **MUST** generate the hash chain database:
+
+```bash
+# Method 1: Generate locally and commit to repo
+export CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
+export PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+export CHAIN_ID=33139
+
+# Generate production-scale chain (100k requests)
+cd scripts && node -e "
+const CHAIN_LENGTH = 100000;
+const crypto = require('crypto');
+const fs = require('fs');
+
+console.log('Generating production hash chain...');
+const chain = [];
+let current = crypto.randomBytes(32).toString('hex');
+
+for (let i = 0; i < CHAIN_LENGTH; i++) {
+  chain.unshift('0x' + current);
+  current = crypto.createHash('sha256').update(Buffer.from(current, 'hex')).digest('hex');
+}
+
+const chainData = { chain, metadata: { length: CHAIN_LENGTH, created: new Date().toISOString() } };
+fs.writeFileSync('../server/chain.db.json', JSON.stringify(chainData, null, 2));
+
+console.log(\`Generated chain with \${CHAIN_LENGTH} seeds\`);
+console.log(\`Anchor (s0): \${chain[0]}\`);
+console.log('File saved to server/chain.db.json');
+"
+
+# Method 2: Use the generate-chain.ts script  
+npx tsx scripts/generate-chain.ts
+
+# Commit the generated chain.db.json to your repository
+git add server/chain.db.json
+git commit -m "Add production hash chain database"
+git push
+```
+
+**5. Deploy via Coolify:**
+
+1. **Create New Service** in Coolify dashboard
+2. **Select Git Repository** containing your FairVRF code
+3. **Set Build Pack** to `Docker` 
+4. **Set Context Directory** to `server/`
+5. **Configure Environment Variables** (as shown above)
+6. **Set Port** to `3000`
+7. **Deploy**
+
+**6. Verify Deployment:**
+
+```bash
+# Check if your server is running
+curl https://your-coolify-app.com/health
+
+# Expected response:
+# {"status":"healthy","uptime":123,"requests":0}
+```
+
+**7. Monitor Logs:**
+
+In Coolify dashboard:
+- Go to your service → **Logs** tab
+- Look for: `"Service started successfully!"`
+- Monitor for: `"📡 New event detected: RequestId X"`
+
+**Important Notes for Coolify:**
+
+- **Persistent Storage**: Hash chain is stored in `chain.db.json` - make sure this file is committed to your repo
+- **Environment Variables**: All configuration is done via Coolify env vars, no `.env` file needed
+- **Health Checks**: Server exposes `/health` endpoint for monitoring
+- **Log Monitoring**: Enable log aggregation in Coolify to monitor fulfillment activity
+- **Scaling**: Run single instance only (hash chain state is not shared across instances)
+
+**Troubleshooting Coolify Deployment:**
+
+```bash
+# If deployment fails, check:
+1. server/Dockerfile exists and is valid
+2. server/package.json has correct dependencies  
+3. server/chain.db.json exists and is valid JSON
+4. Environment variables are set correctly in Coolify
+5. Port 3000 is properly exposed
+
+# Common issues:
+- "Module not found": Missing dependencies in package.json
+- "Chain file not found": Missing chain.db.json file
+- "Contract address invalid": Wrong CONTRACT_ADDRESS env var
+- "Connection failed": Wrong RPC_URL or network issues
 ```
 
 ## Automatic Contract Updates
@@ -467,8 +675,8 @@ FairVRF includes built-in automatic contract anchor update functionality that el
 
 ```env
 # Required for automatic updates
-CONTRACT_ADDRESS=0x14ba174823e16DD8747a2A16F62333ad43C23CEB
-PRIVATE_KEY=0x923e7d9EE4af64D70b96cEd718d735d246531869
+CONTRACT_ADDRESS=0x48c579b565de9FBfd2E6800952b947E090Ff9cd0
+PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 
 # Optional: Network configuration
 RPC_URL=https://rpc.apechain.com

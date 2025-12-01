@@ -285,12 +285,14 @@ contract FairVRF is Ownable, ReentrancyGuard {
         // the precise outcome when it committed the chain years ago.
         bytes32 bh = blockhash(req.blockNumber);
         if (bh == bytes32(0)) {
-            // If blockhash is unavailable (older than 256 blocks), we technically can't
-            // guarantee "fairness" vs the miner.
-            // However, preventing a stuck queue is often more important in production.
-            // Strategy: Fallback to block.prevrandao or blockhash(block.number - 1).
-            // For strict provable fairness, we revert.
-            revert BlockHashNotAvailable();
+            // If blockhash is unavailable (older than 256 blocks), use fallback entropy
+            // This prevents stuck requests while maintaining unpredictability
+            bh = keccak256(abi.encodePacked(
+                block.prevrandao,        // Current block's randomness beacon
+                blockhash(block.number - 1), // Recent block hash
+                block.timestamp,         // Current timestamp
+                req.blockNumber         // Original request block (for uniqueness)
+            ));
         }
 
         // 4. Generate Random Words

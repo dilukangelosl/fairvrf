@@ -19,6 +19,14 @@ declare class FairVRFService {
     start(): Promise<void>;
     private handleRandomnessRequest;
     private updateAverageResponseTime;
+    private lastProcessedBlock;
+    private processedRequests;
+    private failedRequests;
+    private pollingActive;
+    private startEventPolling;
+    private pollForEvents;
+    private retryFailedRequests;
+    private performDeepScan;
     getMetrics(): ServiceMetrics;
     getChainHealth(): {
         chainLength: number;

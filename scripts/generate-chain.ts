@@ -13,7 +13,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function main() {
-    const CHAIN_LENGTH = 1000; // 1000 for demo, can be 10000
+    const CHAIN_LENGTH = 100000; // 1000 for demo, can be 10000
     console.log(`Generating hash chain of length ${CHAIN_LENGTH}...`);
 
     // 1. Generate the "Secret" (The end of the chain / s_n)
