@@ -8,12 +8,72 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 // Configuration from environment variables
 const CHAIN_LENGTH = parseInt(process.env.CHAIN_LENGTH || '100000'); // 100k by default for production
 const CHAIN_FILE = path.join(__dirname, '..', 'chain.db.json');
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
+
+/**
+ * Update contract anchor using the built contract updater
+ */
+async function updateContractAnchor(newAnchor) {
+    return new Promise((resolve, reject) => {
+        console.log('   Calling contract updater...');
+        
+        // Use the built contract updater by spawning node process
+        const updaterPath = path.join(__dirname, '..', 'dist', 'src', 'contract-updater.js');
+        
+        // Create a temporary script to call the updater
+        const tempScript = `
+const { updateContractAnchor, logContractUpdateResult } = require('${updaterPath}');
+updateContractAnchor('${newAnchor}', {
+    contractAddress: '${CONTRACT_ADDRESS}',
+    privateKey: '${PRIVATE_KEY}',
+    rpcUrl: '${process.env.RPC_URL || 'https://rpc.apechain.com'}',
+    chainId: ${process.env.CHAIN_ID || 33139}
+}).then(result => {
+    logContractUpdateResult('${newAnchor}', result, '${CONTRACT_ADDRESS}');
+    process.exit(result.success ? 0 : 1);
+}).catch(error => {
+    console.error('Contract update failed:', error.message);
+    process.exit(1);
+});
+`;
+        
+        // Write temp script and execute
+        const tempFile = path.join(__dirname, '..', 'temp-update.js');
+        fs.writeFileSync(tempFile, tempScript);
+        
+        const child = spawn('node', [tempFile], {
+            stdio: 'inherit',
+            env: process.env
+        });
+        
+        child.on('close', (code) => {
+            // Clean up temp file
+            try {
+                fs.unlinkSync(tempFile);
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+            
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`Contract update failed with code ${code}`));
+            }
+        });
+        
+        child.on('error', (error) => {
+            reject(error);
+        });
+    });
+}
+
+async function main() {
 
 console.log('FairVRF Docker Chain Generation');
 console.log('===============================');
@@ -59,6 +119,7 @@ const generationTime = Date.now() - startTime;
 // Create chain data structure
 const chainData = {
     chain,
+    length: CHAIN_LENGTH,  // Add this for compatibility
     metadata: {
         length: CHAIN_LENGTH,
         created: new Date().toISOString(),
@@ -81,12 +142,13 @@ try {
     console.log(`   File size: ${(fs.statSync(CHAIN_FILE).size / 1024 / 1024).toFixed(1)} MB`);
     console.log('');
     
-    // Contract anchor update notice
+    // Automatic contract anchor update
     if (CONTRACT_ADDRESS && PRIVATE_KEY) {
-        console.log('Contract Anchor Update Required:');
+        console.log('Updating contract anchor automatically...');
         console.log(`   Contract: ${CONTRACT_ADDRESS}`);
         console.log(`   New Anchor: ${chain[0]}`);
-        console.log('   The server will automatically update the contract anchor on startup.');
+        
+        await updateContractAnchor(chain[0]);
     } else {
         console.log('Manual Contract Update Required:');
         console.log(`   Call setAnchor("${chain[0]}") on your FairVRF contract`);
@@ -99,3 +161,11 @@ try {
     console.error('Failed to save chain database:', error.message);
     process.exit(1);
 }
+
+}
+
+// Run the main function
+main().catch((error) => {
+    console.error('Script failed:', error.message);
+    process.exit(1);
+});
