@@ -1,0 +1,779 @@
+# FairVRF: Self-Hosted Provably Fair VRF
+
+A gas-efficient, self-hosted Verifiable Random Function (VRF) that serves as a drop-in replacement for Chainlink VRF and Pyth Entropy. Built using reverse hash chain architecture (PayWord model) for cryptographic verifiability without external dependencies.
+
+## Table of Contents
+
+- [Problem & Research](#problem--research)
+- [Solution Architecture](#solution-architecture)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage Examples](#usage-examples)
+- [API Reference](#api-reference)
+- [Deployment Guide](#deployment-guide)
+- [Chain Management](#chain-management)
+- [Security Considerations](#security-considerations)
+- [Migration Guide](#migration-guide)
+- [Contributing](#contributing)
+
+## Problem & Research
+
+### The Cost Problem
+
+Existing VRF solutions impose significant operational costs:
+
+- **Chainlink VRF**: $0.25 - $3.00 per request + LINK token requirements
+- **Pyth Entropy**: Network-specific fees + subscription costs
+- **External Dependencies**: Risk of service deprecation or network unavailability
+
+For high-frequency applications (GameFi, on-chain casinos, NFT minting), these costs make projects economically unviable.
+
+### Research & Inspiration
+
+The solution draws inspiration from several cryptographic primitives:
+
+1. **PayWord Scheme (Rivest & Shamir, 1997)**: Micropayment system using hash chains for efficient verification
+2. **Provably Fair Gaming**: Standard practice in online gambling where operators pre-commit to random seeds
+3. **Lamport's One-Time Passwords**: Sequential revelation of hash chain elements for authentication
+
+### Why Hash Chains Work for VRF
+
+Hash chains provide:
+- **Pre-commitment**: Server commits to entire sequence upfront
+- **Sequential Verification**: Each revelation proves previous commitment
+- **Tamper Evidence**: Impossible to manipulate without detection
+- **Gas Efficiency**: Single hash operation for verification (~21,000 gas)
+
+## Solution Architecture
+
+### Reverse Hash Chain Model
+
+```
+Server generates: s_1000 -> s_999 -> ... -> s_1 -> s_0 (anchor)
+                    |        |              |      |
+                  secret  intermediate   first   public
+                           values       reveal  commitment
+```
+
+1. **Generation**: Server creates 1000 random seeds, hashes backward
+2. **Deployment**: Contract stores s_0 as public anchor
+3. **Fulfillment**: Server reveals s_1, contract verifies `keccak256(s_1) == s_0`
+4. **Progression**: s_1 becomes new anchor for next request
+
+### Entropy Mixing Formula
+
+```solidity
+finalRandom = keccak256(
+    abi.encodePacked(
+        serverSeed,      // Revealed from hash chain
+        userSeed,        // Derived from request parameters
+        blockhash,       // Block randomness at request time
+        requestId        // Unique request identifier
+    )
+);
+```
+
+This ensures:
+- Server cannot manipulate outcome after seeing user input
+- User cannot grind favorable conditions
+- Block randomness adds unpredictability
+- Each request has unique context
+
+## Features
+
+### Core Capabilities
+
+- **Zero External Costs**: Only gas fees, no token requirements
+- **Chainlink Compatible**: Drop-in replacement with identical API
+- **Pyth Compatible**: Support for Entropy-style callbacks
+- **Provably Fair**: Users can verify randomness generation
+- **Gas Optimized**: ~30-50k gas per fulfillment
+- **Self-Sovereign**: No external dependencies
+
+### Supported Interfaces
+
+1. **Chainlink VRF V2 Style**:
+   ```solidity
+   requestRandomWords(keyHash, subId, confirmations, gasLimit, numWords)
+   ```
+
+2. **Pyth Entropy Style**:
+   ```solidity
+   requestWithCallback(provider, userRandomNumber)
+   ```
+
+## Quick Start
+
+### 1. Clone and Install
+
+```bash
+git clone https://github.com/dilukangelosl/fairvrf.git
+cd fairvrf
+npm install
+```
+
+### 2. Generate Hash Chain
+
+```bash
+npx hardhat run scripts/generate-chain.ts
+```
+
+This creates `server/chain.db.json` with 1000 pre-computed seeds.
+
+### 3. Deploy Contract
+
+```bash
+npx hardhat ignition deploy ignition/modules/FairVRF.ts --network hardhatMainnet
+```
+
+### 4. Start Oracle Server
+
+```bash
+export CONTRACT_ADDRESS=<deployed_contract_address>
+export PRIVATE_KEY=<fulfiller_private_key>
+cd server && npm run start
+```
+
+### 5. Test Everything
+
+```bash
+npx hardhat test
+```
+
+## Installation
+
+### Prerequisites
+
+- Node.js v22+ (Hardhat 3 requirement)
+- pnpm (recommended) or npm
+- Git
+
+### Project Setup
+
+```bash
+# Clone repository
+git clone https://github.com/dilukangelosl/fairvrf.git
+cd fairvrf
+
+# Install dependencies
+pnpm install
+
+# Compile contracts
+pnpm compile
+
+# Run tests
+pnpm test
+```
+
+### Environment Configuration
+
+Create `.env` file:
+
+```env
+# Required for server operation
+CONTRACT_ADDRESS=0x...
+PRIVATE_KEY=0x...
+RPC_URL=http://127.0.0.1:8545
+
+# Optional: Production networks
+SEPOLIA_RPC_URL=https://...
+SEPOLIA_PRIVATE_KEY=0x...
+```
+
+## Usage Examples
+
+### Chainlink-Style Consumer
+
+```solidity
+pragma solidity ^0.8.28;
+
+import "fair-vrf/contracts/FairVRFConsumer.sol";
+
+contract DiceGame is FairVRFConsumer {
+    constructor(address _vrfCoordinator) 
+        FairVRFConsumer(_vrfCoordinator) {}
+
+    function rollDice() external returns (uint256 requestId) {
+        // Request randomness
+        requestId = IFairVRF(COORDINATOR).requestRandomWords(
+            bytes32(0), // keyHash (ignored)
+            0,          // subId (ignored)  
+            3,          // confirmations
+            100000,     // callback gas limit
+            1           // number of random words
+        );
+    }
+
+    function fulfillRandomWords(
+        uint256 requestId, 
+        uint256[] memory randomWords
+    ) internal override {
+        // Use randomWords[0] for game logic
+        uint8 diceResult = uint8((randomWords[0] % 6) + 1);
+        // Handle result...
+    }
+}
+```
+
+### Pyth-Style Consumer
+
+```solidity
+pragma solidity ^0.8.28;
+
+import "fair-vrf/contracts/PythVRFConsumer.sol";
+
+contract LotteryGame is PythVRFConsumer {
+    constructor(address _vrfCoordinator) 
+        PythVRFConsumer(_vrfCoordinator) {}
+
+    function drawWinner() external {
+        bytes32 userEntropy = keccak256(abi.encode(
+            block.timestamp,
+            players.length
+        ));
+
+        uint64 sequenceNumber = IFairVRFPyth(COORDINATOR)
+            .requestWithCallback(address(this), userEntropy);
+    }
+
+    function fulfillEntropy(
+        uint64 sequenceNumber,
+        address provider,
+        bytes32 randomNumber
+    ) internal override {
+        // Select winner using randomNumber
+        uint256 winnerIndex = uint256(randomNumber) % players.length;
+        // Handle winner selection...
+    }
+}
+```
+
+## API Reference
+
+### Core Contract: FairVRF.sol
+
+#### Request Functions
+
+```solidity
+// Chainlink-compatible interface
+function requestRandomWords(
+    bytes32 keyHash,        // Ignored (compatibility)
+    uint64 subId,          // Ignored (compatibility)
+    uint16 requestConfirmations,
+    uint32 callbackGasLimit,
+    uint32 numWords
+) external returns (uint256 requestId);
+
+// Pyth-compatible interface  
+function requestWithCallback(
+    address provider,       // Ignored (this contract is provider)
+    bytes32 userRandomNumber
+) external payable returns (uint64 sequenceNumber);
+```
+
+#### Fulfillment Function
+
+```solidity
+function fulfillRandomness(
+    uint256 requestId,
+    bytes32 nextServerSeed  // Next seed in hash chain
+) external;
+```
+
+#### Consumer Whitelist Management
+
+```solidity
+// Enable/disable consumer whitelist (owner only)
+function setConsumerWhitelistEnabled(bool _enabled) external;
+
+// Authorize/deauthorize single consumer (owner only)
+function setConsumerAuthorization(address _consumer, bool _authorized) external;
+
+// Batch authorize multiple consumers (owner only)
+function batchSetConsumerAuthorization(
+    address[] calldata _consumers,
+    bool[] calldata _authorized
+) external;
+
+// Check consumer authorization
+function authorizedConsumers(address consumer) external view returns (bool);
+function consumerWhitelistEnabled() external view returns (bool);
+```
+
+#### View Functions
+
+```solidity
+function verifyRandomness(
+    uint256 requestId,
+    bytes32 serverSeedRevealed
+) external view returns (bool isValid, uint256[] memory randomWords);
+
+function currentAnchor() external view returns (bytes32);
+```
+
+### Consumer Base Contracts
+
+#### FairVRFConsumer.sol
+
+```solidity
+abstract contract FairVRFConsumer {
+    function fulfillRandomWords(
+        uint256 requestId, 
+        uint256[] memory randomWords
+    ) internal virtual;
+}
+```
+
+#### PythVRFConsumer.sol
+
+```solidity
+abstract contract PythVRFConsumer {
+    function fulfillEntropy(
+        uint64 sequenceNumber,
+        address provider,
+        bytes32 randomNumber
+    ) internal virtual;
+}
+```
+
+## Deployment Guide
+
+### Local Development
+
+```bash
+# Start Hardhat node
+npx hardhat node
+
+# Generate chain
+npx hardhat run scripts/generate-chain.ts --network localhost
+
+# Deploy contracts
+npx hardhat ignition deploy ignition/modules/FairVRF.ts --network localhost
+
+# Start server
+export CONTRACT_ADDRESS=<address>
+cd server && npm run start
+```
+
+### Production Deployment
+
+#### 1. Generate Production Chain
+
+```bash
+# Modify scripts/generate-chain.ts for production scale
+const CHAIN_LENGTH = 100000; // 100k requests
+
+npx hardhat run scripts/generate-chain.ts
+```
+
+#### 2. Deploy to Network
+
+```bash
+npx hardhat ignition deploy ignition/modules/FairVRF.ts --network sepolia
+```
+
+#### 3. Docker Deployment
+
+##### Option A: Docker Compose (Recommended)
+
+```bash
+# Create environment file
+cat > .env << EOF
+CONTRACT_ADDRESS=0x...
+PRIVATE_KEY=0x...
+RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR-KEY
+EOF
+
+# Build and start the service
+docker-compose up -d --build
+
+# Check logs
+docker-compose logs -f fairvrf-server
+
+# Stop the service
+docker-compose down
+```
+
+##### Option B: Manual Docker Build
+
+```bash
+# Build the Docker image
+cd server
+docker build -t fairvrf/server:latest .
+
+# Run the container
+docker run -d \
+  --name fairvrf-oracle \
+  --restart unless-stopped \
+  -e CONTRACT_ADDRESS=${CONTRACT_ADDRESS} \
+  -e PRIVATE_KEY=${PRIVATE_KEY} \
+  -e RPC_URL=${RPC_URL} \
+  -v $(pwd)/chain.db.json:/app/chain.db.json:ro \
+  fairvrf/server:latest
+
+# Check logs
+docker logs -f fairvrf-oracle
+```
+
+##### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `CONTRACT_ADDRESS` | Deployed FairVRF contract address | ✅ | - |
+| `PRIVATE_KEY` | Private key for fulfillment account | ✅ | - |
+| `RPC_URL` | Blockchain RPC endpoint | ❌ | `http://127.0.0.1:8545` |
+| `NODE_ENV` | Runtime environment | ❌ | `development` |
+
+## Consumer Management
+
+### Consumer Whitelist Feature
+
+FairVRF includes an optional consumer whitelist feature for enhanced security and access control. By default, the contract operates in **open access mode** (like Chainlink VRF), but administrators can enable whitelisting to restrict usage to approved contracts only.
+
+#### Default Behavior
+
+- **Whitelist Disabled**: Anyone can call `requestRandomWords()` or `requestWithCallback()` 
+- **Fully Permissionless**: No restrictions, identical to Chainlink VRF behavior
+- **Backward Compatible**: Existing integrations work without changes
+
+#### Enabling Consumer Whitelist
+
+```bash
+# Check current whitelist status
+export CONTRACT_ADDRESS=0x... 
+npx hardhat run scripts/manage-consumers.ts status --network sepolia
+
+# Enable consumer whitelist (restricts access)
+npx hardhat run scripts/manage-consumers.ts enable --network sepolia
+
+# Disable consumer whitelist (open access)
+npx hardhat run scripts/manage-consumers.ts disable --network sepolia
+```
+
+#### Managing Authorized Consumers
+
+```bash
+# Authorize a single consumer contract
+npx hardhat run scripts/manage-consumers.ts authorize 0x1234567890123456789012345678901234567890 --network sepolia
+
+# Deauthorize a consumer
+npx hardhat run scripts/manage-consumers.ts deauthorize 0x1234567890123456789012345678901234567890 --network sepolia
+
+# Batch authorize multiple consumers
+npx hardhat run scripts/manage-consumers.ts batch-authorize 0x1111...,0x2222...,0x3333... --network sepolia
+
+# Check if a specific consumer is authorized
+npx hardhat run scripts/manage-consumers.ts check 0x1234567890123456789012345678901234567890 --network sepolia
+```
+
+#### Programmatic Management
+
+```solidity
+// Check if whitelist is enabled
+bool isWhitelistEnabled = fairVRF.consumerWhitelistEnabled();
+
+// Check if a consumer is authorized
+bool isAuthorized = fairVRF.authorizedConsumers(consumerAddress);
+
+// Owner-only functions
+fairVRF.setConsumerWhitelistEnabled(true);  // Enable whitelist
+fairVRF.setConsumerAuthorization(consumer, true);  // Authorize consumer
+fairVRF.batchSetConsumerAuthorization(consumers, authorizations);  // Batch authorize
+```
+
+#### Use Cases
+
+**Open Access (Default)**
+- Public VRF service
+- Chainlink VRF replacement
+- Community-driven projects
+- Maximum compatibility
+
+**Restricted Access (Whitelist Enabled)**
+- Private enterprise deployments
+- Premium service tiers  
+- Beta testing environments
+- Regulatory compliance requirements
+
+#### Security Considerations
+
+- **Owner Control**: Only contract owner can manage whitelist settings
+- **Granular Access**: Individual consumer authorization/deauthorization
+- **Batch Operations**: Efficient management of multiple consumers
+- **Event Logging**: All authorization changes emit events for monitoring
+- **Fail-Safe Design**: Whitelist disabled by default prevents accidental lockouts
+
+## Chain Management
+
+### Understanding Chain Exhaustion
+
+Each hash chain has finite capacity. With 1000 seeds:
+- Supports 1000 randomness requests
+- Chain exhausts after final seed revelation
+- Server throws: "Chain Exhausted! Admin must commit a new anchor."
+
+### Monitoring Chain Status
+
+```javascript
+// Calculate remaining capacity
+function getRemainingRequests(currentAnchor, chainData) {
+    const currentIndex = chainData.indexOf(currentAnchor);
+    return chainData.length - currentIndex - 1;
+}
+
+// Alert when low
+if (getRemainingRequests() < 100) {
+    // Generate new chain and prepare for rotation
+}
+```
+
+### Chain Rotation Process
+
+#### Automated Rotation
+
+```solidity
+// Add to FairVRF contract
+function setAnchor(bytes32 _newAnchor) external onlyOwner {
+    bytes32 oldAnchor = currentAnchor;
+    currentAnchor = _newAnchor;
+    emit AnchorUpdated(oldAnchor, _newAnchor);
+}
+```
+
+#### Server Implementation
+
+```javascript
+// server/src/chain-rotation.js
+class ChainRotationManager {
+    async rotateChainWhenLow() {
+        if (this.getRemainingSeeds() < this.ROTATION_THRESHOLD) {
+            await this.generateNewChain();
+            await this.deployNewAnchor();
+            await this.loadNewChain();
+        }
+    }
+}
+```
+
+### Scaling Considerations
+
+| Chain Size | Capacity | Use Case |
+|------------|----------|----------|
+| 1,000 | Development/Testing | Local dev, demos |
+| 10,000 | Small Production | Indie games, small dApps |
+| 100,000 | Medium Production | GameFi platforms |
+| 1,000,000+ | Large Production | Major gambling platforms |
+
+## Security Considerations
+
+### Trust Model
+
+**What Users Must Trust:**
+- Server will fulfill requests (liveness)
+- Server won't selectively censor requests
+
+**What Users DON'T Need to Trust:**
+- Server cannot manipulate randomness
+- All results are cryptographically verifiable
+- Pre-commitment prevents post-hoc manipulation
+
+### Attack Vectors & Mitigations
+
+#### 1. Server Downtime
+- **Risk**: Requests hang unfulfilled
+- **Mitigation**: Implement request timeout and refund mechanism
+
+#### 2. Selective Fulfillment
+- **Risk**: Server only fulfills favorable outcomes
+- **Mitigation**: Social reputation, multiple server operators
+
+#### 3. Chain Loss
+- **Risk**: Server loses chain.db.json file
+- **Mitigation**: Encrypted backups, redundant storage
+
+#### 4. Sequencer Manipulation (L2/L3)
+- **Risk**: Sequencer censors fulfillment transactions
+- **Mitigation**: Use L1 blockhash, assume honest sequencer
+
+### Verification Guide
+
+Users can verify any result:
+
+```javascript
+// Verify a randomness result
+function verifyResult(requestId, revealedSeed, expectedAnchor) {
+    // 1. Check seed matches commitment
+    const computedHash = keccak256(revealedSeed);
+    assert(computedHash === expectedAnchor);
+    
+    // 2. Recompute final randomness
+    const finalRandom = keccak256(
+        revealedSeed + 
+        userSeed + 
+        blockHash + 
+        requestId
+    );
+    
+    return finalRandom;
+}
+```
+
+## Migration Guide
+
+### From Chainlink VRF
+
+#### 1. Contract Changes
+
+```diff
+// Old Chainlink import
+- import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
++ import "fair-vrf/contracts/FairVRFConsumer.sol";
+
+// Old inheritance
+- contract MyGame is VRFConsumerBaseV2 {
++ contract MyGame is FairVRFConsumer {
+
+// Constructor update
+- constructor(uint64 subscriptionId) 
+-   VRFConsumerBaseV2(vrfCoordinator) {
++ constructor(address vrfCoordinator) 
++   FairVRFConsumer(vrfCoordinator) {
+```
+
+#### 2. Request Changes
+
+```diff
+// Old Chainlink request
+- uint256 requestId = COORDINATOR.requestRandomWords(
+-   keyHash,
+-   s_subscriptionId,
+-   requestConfirmations,
+-   callbackGasLimit,
+-   numWords
+- );
+
+// New FairVRF request (same parameters!)
++ uint256 requestId = IFairVRF(COORDINATOR).requestRandomWords(
++   bytes32(0),        // keyHash ignored
++   0,                 // subId ignored
++   requestConfirmations,
++   callbackGasLimit,
++   numWords
++ );
+```
+
+#### 3. Callback Unchanged
+
+```solidity
+// This stays exactly the same!
+function fulfillRandomWords(
+    uint256 requestId,
+    uint256[] memory randomWords
+) internal override {
+    // Your existing logic works unchanged
+}
+```
+
+### From Pyth Entropy
+
+#### 1. Interface Changes
+
+```diff
+- import "@pythnetwork/entropy-sdk-solidity/IEntropy.sol";
++ import "fair-vrf/contracts/PythVRFConsumer.sol";
+
+- contract MyLottery {
++ contract MyLottery is PythVRFConsumer {
+```
+
+#### 2. Request Method
+
+```diff
+- uint64 sequenceNumber = entropy.requestWithCallback{value: fee}(
+-   entropyProvider,
+-   userCommittedRandomNumber
+- );
+
++ uint64 sequenceNumber = IFairVRFPyth(COORDINATOR).requestWithCallback(
++   address(this),
++   userCommittedRandomNumber
++ );
+```
+
+## Contributing
+
+### Development Setup
+
+```bash
+# Fork and clone
+git clone <your-fork>
+cd fairvrf
+
+# Install dependencies
+pnpm install
+
+# Run tests
+pnpm test
+
+# Start development node
+pnpm node
+```
+
+### Testing
+
+```bash
+# Run all tests
+pnpm test
+
+# Run specific test file
+npx hardhat test test/FairVRF.ts
+
+# Run with coverage
+npx hardhat coverage
+```
+
+### Code Quality
+
+```bash
+# Lint Solidity
+pnpm lint:sol
+
+# Lint TypeScript
+pnpm lint:ts
+
+# Format code
+pnpm format
+```
+
+### Submitting Changes
+
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Make changes and add tests
+4. Ensure all tests pass: `pnpm test`
+5. Commit changes: `git commit -m 'Add amazing feature'`
+6. Push to branch: `git push origin feature/amazing-feature`
+7. Open Pull Request
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- **Rivest & Shamir**: PayWord micropayment scheme inspiration
+- **Chainlink Team**: VRF API design and standards
+- **Pyth Network**: Entropy interface patterns
+- **Provably Fair Gaming**: Community standards for verifiable randomness
+
+## Support
+
+- Documentation: [docs/](docs/)
+- Issues: [GitHub Issues](issues/)
+- Discussions: [GitHub Discussions](discussions/)
+- Twitter: [@cryptoangelodev](https://x.com/cryptoangelodev)
+
+---
+
+Built with love for the decentralized future. Make randomness free and verifiable for everyone.

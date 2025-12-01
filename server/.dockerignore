@@ -1,0 +1,62 @@
+# Node modules (will be installed in container)
+node_modules/
+npm-debug.log*
+
+# Build artifacts
+dist/
+build/
+
+# Test files
+test/
+*.test.ts
+*.test.js
+coverage/
+
+# Development files
+.env.local
+.env.development
+
+# Git files
+.git/
+.gitignore
+
+# Documentation
+README.md
+docs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary directories
+tmp/
+temp/
+
+# Optional npm cache directory
+.npm
+
+# ESLint cache
+.eslintcache
+
+# Backup files
+*.bak
+*_backup_*
+
+# Chain database backups (keep main chain.db.json)
+chain.*_backup_*.json

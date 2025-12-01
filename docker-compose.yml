@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  fairvrf-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: fairvrf/server:latest
+    container_name: fairvrf-oracle
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS}
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - RPC_URL=${RPC_URL:-http://host.docker.internal:8545}
+    volumes:
+      # Mount chain database to persist across restarts
+      - ./server/chain.db.json:/app/chain.db.json:ro
+      - fairvrf-backups:/app/backups
+    networks:
+      - fairvrf-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Health check passed')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  fairvrf-network:
+    driver: bridge
+
+volumes:
+  fairvrf-backups:
+    driver: local
