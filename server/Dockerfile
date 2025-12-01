@@ -9,8 +9,8 @@ COPY package*.json ./
 COPY bun.lock* ./
 COPY tsconfig.json ./
 
-# Install dependencies (use npm install since we don't have package-lock.json)
-RUN npm install --omit=dev
+# Install all dependencies (including dev dependencies for build)
+RUN npm install
 
 # Copy source code and scripts
 COPY src/ ./src/
@@ -18,6 +18,9 @@ COPY scripts/ ./scripts/
 
 # Build the TypeScript code
 RUN npm run build
+
+# Remove dev dependencies after build to reduce image size
+RUN npm prune --omit=dev
 
 # Make scripts executable
 RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/generate-chain-docker.js
