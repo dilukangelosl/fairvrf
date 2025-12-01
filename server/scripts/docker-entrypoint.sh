@@ -15,7 +15,7 @@ echo ""
 # Step 1: Generate hash chain if it doesn't exist
 echo "Step 1: Hash Chain Generation"
 echo "-----------------------------"
-node /app/scripts/generate-chain-docker.js
+node /app/scripts/generate-chain-docker.cjs
 
 # Check if chain generation was successful
 if [ ! -f "/app/chain.db.json" ]; then

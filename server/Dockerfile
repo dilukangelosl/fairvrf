@@ -23,7 +23,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # Make scripts executable
-RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/generate-chain-docker.js
+RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/generate-chain-docker.cjs
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S fairvrf && \
