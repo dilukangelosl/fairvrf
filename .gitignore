@@ -1,6 +1,6 @@
 # Node modules
-/node_modules
-/server/node_modules
+node_modules/
+**/node_modules/
 
 # Compilation output
 /dist
@@ -23,3 +23,6 @@
 # Environment files
 .env
 /server/.env
+
+# Generated data files
+/server/chain.db.json
