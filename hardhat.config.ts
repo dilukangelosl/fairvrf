@@ -56,7 +56,7 @@ export default defineConfig({
         etherscan: {
           name: "ApeScan",
           url: "https://apescan.io",
-          apiUrl: "https://apescan.io/api",
+          apiUrl: "https://api.apescan.io/api",
         },
       },
     },
