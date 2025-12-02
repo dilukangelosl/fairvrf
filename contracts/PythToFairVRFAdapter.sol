@@ -23,6 +23,14 @@ interface IEntropyConsumer {
     ) external;
 }
 
+interface IEntropyConsumerAlt {
+    function _entropyCallback(
+        uint64 sequenceNumber,
+        address provider,
+        bytes32 randomValue
+    ) external;
+}
+
 /**
  * @title PythToFairVRFAdapter
  * @dev Adapter that makes FairVRF compatible with Pyth Entropy V2 interface
@@ -105,8 +113,17 @@ contract PythToFairVRFAdapter is IEntropyV2, FairVRFConsumer {
             ) {
                 // Success - clean up
             } catch {
-                // Handle callback failure gracefully
-                // Could emit an event or implement retry logic
+                // Try alternative interface (_entropyCallback) used by some Pyth SDK versions
+                try IEntropyConsumerAlt(consumer)._entropyCallback{gas: gasLimit}(
+                    sequenceNumber,
+                    address(this), // provider address (this adapter)
+                    bytes32(randomWords[0])
+                ) {
+                    // Success - clean up
+                } catch {
+                    // Handle callback failure gracefully
+                    // Could emit an event or implement retry logic
+                }
             }
         }
         

@@ -22,7 +22,7 @@ async function main() {
   // or we just assume it's deployed at a known address if provided in environment
   
   // Hardcoded address provided by user
-  let consumerAddress = "0x30439aA46cd85b68353575e4d8634479AB52B80C";
+  let consumerAddress = "0xA62E83d49a5C8E6cD87d628C3a3D1Df6936E30b1";
   
   if (process.env.CONSUMER_ADDRESS) {
       consumerAddress = process.env.CONSUMER_ADDRESS;

@@ -1,5 +1,7 @@
 {
   "FairVRFModule#FairVRF": "0x48c579b565de9FBfd2E6800952b947E090Ff9cd0",
   "PythToFairVRFAdapterModule#PythToFairVRFAdapter": "0x9Ae17f3cCFB9a2C754cEd486BE9eaA6cf088c48E",
-  "PythExampleConsumerModule#PythExampleConsumer": "0x30439aA46cd85b68353575e4d8634479AB52B80C"
+  "PythExampleConsumerModule#PythExampleConsumer": "0x30439aA46cd85b68353575e4d8634479AB52B80C",
+  "PythToFairVRFAdapterModuleV2#PythToFairVRFAdapter": "0x7f0375BCDdBD8C069685d147C1551A077df786AC",
+  "PythExampleConsumerModuleV2#PythExampleConsumer": "0xA62E83d49a5C8E6cD87d628C3a3D1Df6936E30b1"
 }

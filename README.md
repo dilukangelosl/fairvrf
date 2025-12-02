@@ -267,8 +267,8 @@ For seamless integration with existing Pyth Entropy contracts, FairVRF includes 
 
 **Deployed Addresses (ApeChain):**
 - FairVRF Core: `0x48c579b565de9FBfd2E6800952b947E090Ff9cd0`
-- Pyth Adapter: `0x9Ae17f3cCFB9a2C754cEd486BE9eaA6cf088c48E`
-- Example Consumer: `0x30439aA46cd85b68353575e4d8634479AB52B80C`
+- Pyth Adapter: `0x7f0375BCDdBD8C069685d147C1551A077df786AC`
+- Example Consumer: `0xA62E83d49a5C8E6cD87d628C3a3D1Df6936E30b1`
 
 #### Drop-in Replacement Usage
 
@@ -281,7 +281,7 @@ contract ExistingPythContract {
     
     constructor(address entropyProvider) {
         // Simply point to PythToFairVRFAdapter instead
-        entropy = IEntropy(0x9Ae17f3cCFB9a2C754cEd486BE9eaA6cf088c48E);
+        entropy = IEntropy(0x7f0375BCDdBD8C069685d147C1551A077df786AC);
     }
     
     function requestRandomness() external {
